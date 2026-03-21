@@ -6,7 +6,7 @@
 meta:
   version: "1.0.0"
   last_updated: "2026-03-05"
-  skill_count: 45
+  skill_count: 46
   role_count: 5
 
 tag_vocabulary:
@@ -63,6 +63,18 @@ skills:
     difficulty: intermediate
     time_estimate: "20-40min"
     file: skills/appsec/api-security/SKILL.md
+    compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
+
+  - id: ai-generated-code
+    name: "AI-Generated Code Security Review"
+    tags: [appsec, ai-generated, code-review, sast]
+    role: [appsec-engineer, security-engineer]
+    phase: [build, review]
+    activity: [review, assess]
+    frameworks: [OWASP-ASVS-4.0.3, CWE-Top-25-2024, OWASP-LLM-Top-10-2025]
+    difficulty: intermediate
+    time_estimate: "10-20min"
+    file: skills/appsec/ai-generated-code/SKILL.md
     compatible_tools: [claude-code, gemini-cli, cursor, codex-cli, openclaw, kiro]
 
   - id: dependency-scanning
