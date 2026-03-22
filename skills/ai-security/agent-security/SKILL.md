@@ -3,18 +3,19 @@ name: agent-security
 description: >
   Reviews AI agent architectures for security risks including permission model
   design, least-privilege enforcement, human-in-the-loop gate placement, blast
-  radius containment, audit trail completeness, rollback capability, and
-  multi-agent trust boundaries. Auto-invoked when reviewing agentic AI systems
-  where LLMs invoke tools, take autonomous actions, or operate in multi-agent
-  configurations. Produces a structured architecture security assessment mapped
-  to OWASP Agentic AI threats and NIST AI RMF 1.0.
+  radius containment, audit trail completeness, rollback capability, multi-agent
+  trust boundaries, memory boundary security (context amnesia attacks), confused-
+  deputy via tool output, and workload identity federation. Auto-invoked when
+  reviewing agentic AI systems where LLMs invoke tools, take autonomous actions,
+  or operate in multi-agent configurations. Produces a structured architecture
+  security assessment mapped to OWASP Agentic AI threats and NIST AI RMF 1.0.
 tags: [ai-security, agents, agentic-ai, architecture]
 role: [security-engineer, architect, appsec-engineer, vciso]
 phase: [design, build, review]
 frameworks: [OWASP-Agentic-AI, NIST-AI-RMF-1.0]
 difficulty: advanced
 time_estimate: "60-120min"
-version: "1.0.0"
+version: "1.1.0"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -103,6 +104,7 @@ Evaluate what each agent can do, under what conditions, and whether the permissi
 - **Dynamic vs. static tool sets:** Can the agent's tool set change at runtime? If an orchestrator dynamically assigns tools, what governs which tools are assigned?
 - **Per-session vs. permanent tool access:** Is tool access scoped to a specific task or session, or does every invocation receive the same broad tool set regardless of the task?
 - **Cross-agent tool sharing:** Can one agent invoke another agent's tools? If so, through what authorization mechanism?
+- **Workload identity federation:** Are agent principals using short-lived, automatically-rotated credentials (OIDC tokens via cloud-native workload identity — AWS IAM Roles for Service Accounts, GCP Workload Identity Federation, Azure Managed Identity) rather than long-lived static API keys or service account key files? Long-lived credentials have an indefinite compromise window; federated short-lived tokens expire in minutes and require no secret storage.
 
 **Detection methods using allowed tools:**
 
@@ -118,6 +120,11 @@ Grep: "Tool(|@tool|FunctionTool|StructuredTool|BaseTool" in **/*.{py,ts,js}
 Grep: "service_account|iam|role_arn|credentials|api_key|secret|permission" in **/*.{py,yaml,yml,json,tf,env}
 Grep: "Action.*\*|Resource.*\*|admin|PowerUser|FullAccess" in **/*.{json,yaml,yml,tf}
 
+# Find workload identity and credential type
+Grep: "GOOGLE_APPLICATION_CREDENTIALS|service_account.*key|serviceAccountKey|private_key_id" in **/*.{py,yaml,yml,json,env,tf}
+Grep: "AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|azure_client_secret|AZURE_CLIENT_SECRET" in **/*.{py,yaml,yml,json,env,tf}
+Grep: "workload_identity|iam_role|assume_role|projectedServiceAccountToken|azure_federated_credential|oidc_token" in **/*.{yaml,yml,tf,json}
+
 # Find tool scoping logic
 Grep: "scope|allow|deny|restrict|filter_tools|permitted_tools|enabled_tools" in **/*.{py,ts,js}
 ```
@@ -132,6 +139,7 @@ Grep: "scope|allow|deny|restrict|filter_tools|permitted_tools|enabled_tools" in 
 | Per-task scoping | Tool set varies by task, not globally assigned | Medium -- static over-provisioning |
 | Time-bounded access | Credentials and tool access expire, requiring renewal | Medium -- persistent access risk |
 | Explicit deny | Actions not explicitly permitted are denied by default | High -- fail-open permission model |
+| Federated identity | Agent principal uses short-lived OIDC-based credentials, no static API keys or key files | Medium -- long-lived credential exposure risk |
 
 **NIST AI RMF mapping:** GOVERN 1.2 (roles and responsibilities for AI actors), MAP 3.5 (impact assessment for AI system capabilities).
 
@@ -145,6 +153,8 @@ Grep: "scope|allow|deny|restrict|filter_tools|permitted_tools|enabled_tools" in 
 | No per-task or per-session tool scoping -- every invocation gets full tool set | High |
 | Tool registration allows runtime tool injection by the agent itself | High |
 | Agent credentials do not expire or rotate | Medium |
+| Agent authenticates using long-lived static API keys or service account key files instead of workload identity federation | High |
+| No workload identity federation — agent credential cannot be rotated without a code or config change | Medium |
 | Tool permissions not documented or reviewed periodically | Medium |
 
 ---
@@ -473,6 +483,7 @@ Evaluate the trust model between agents in multi-agent architectures, including 
 - **Delegation depth:** Can an agent delegate tasks to sub-agents, which delegate further? Is there a maximum delegation depth? Can a delegated agent inherit or escalate the delegator's permissions?
 - **Trust hierarchy:** Is there an explicit trust hierarchy defining which agents are trusted for which operations? Or is trust implicit (all agents trust all agents)?
 - **Cross-agent injection:** Can a compromised or manipulated agent inject adversarial content into messages that another agent processes as instructions?
+- **Confused-deputy via tool output:** Does the agent treat tool *output* (web page content, API responses, file reads, database query results) as data to be processed, or can that output redirect the agent's behavior as if it were instructions? An attacker who controls any data source the agent reads can embed instructions that the agent will execute using its own credentials — a confused-deputy attack through the tool call boundary. This is distinct from direct prompt injection: the attack vector is the tool result, not the user prompt.
 
 **Detection methods using allowed tools:**
 
@@ -496,6 +507,11 @@ Grep: "delegate|spawn|create_agent|sub_task|max_depth|delegation_limit" in **/*.
 Grep: "trust|boundary|isolation|trust_level|trust_zone" in **/*.{py,yaml,yml,md}
 Glob: **/trust_model*
 Glob: **/security_architecture*
+
+# Detect confused-deputy risk — check whether tool output is labeled/sanitized before re-entering agent context
+Grep: "tool_result|tool_output|function_result|observation|tool_response" in **/*.{py,ts,js}
+Grep: "from_tool|message_role.*tool|role.*tool" in **/*.{py,ts,js,json,yaml,yml}
+Grep: "sanitize|taint|untrusted|validate.*tool|tool.*validate" in **/*.{py,ts,js}
 ```
 
 **Multi-agent trust boundary evaluation:**
@@ -507,6 +523,7 @@ Glob: **/security_architecture*
 | Memory isolation | Per-agent memory; shared state mediated by trusted broker | All agents read/write shared memory directly |
 | Delegation control | Maximum depth; no permission escalation; explicit delegation policy | Unbounded delegation; delegated agents inherit full permissions |
 | Output validation | Receiving agent validates incoming data against schema | Receiving agent trusts all incoming data as instructions |
+| Tool output taint | Tool results are labeled as untrusted data; agent does not treat them as instructions | Tool output re-enters agent context with full instruction authority |
 | Trust documentation | Explicit trust model document defining boundaries | Implicit trust; no documentation |
 
 **What constitutes a finding:**
@@ -521,6 +538,103 @@ Glob: **/security_architecture*
 | No explicit trust model document for multi-agent architecture | Medium |
 | Inter-agent messages not logged for forensic reconstruction | Medium |
 | No input validation on data received from other agents | High |
+| Tool output (web fetch, API response, file read, DB result) re-enters agent context with instruction authority — confused-deputy via tool boundary | Critical |
+| No architectural separation between "data the agent processes" and "instructions the agent follows" | High |
+
+---
+
+### Step 8 -- Memory Boundary Security (Context Amnesia Attacks)
+
+Evaluate whether the agent's memory architecture maintains principled, auditable boundaries that prevent poisoned state from being retrieved and acted on as trusted context.
+
+**Background:** Agents with limited context windows rely on external memory — vector stores, summarization pipelines, session state, tool-call histories. A "context amnesia attack" exploits the boundary between what the agent *wrote* to memory and what it later *retrieves*. If a prior tool call or injected document writes adversarial content to the memory store, and the agent later retrieves it without re-validating its provenance, the agent acts on attacker-controlled context it believes is its own prior reasoning.
+
+**What to look for in code and configuration:**
+
+- **Memory write provenance:** When the agent writes to a memory store (vector DB, summary store, session state), is the source tagged? Specifically: is content from tool output (untrusted external data) clearly distinguished from the agent's own reasoning or human-provided instructions?
+- **Memory read trust level:** When the agent retrieves from memory, does it treat retrieved content as trusted instructions, or as data subject to the same validation as any external input?
+- **Summarization pipeline integrity:** Many agent frameworks auto-summarize prior conversation turns and inject summaries back as context. Is the content being summarized validated before summarization? A poisoned tool result that gets auto-summarized and re-injected effectively launders attacker content into the agent's trusted context.
+- **Vector store isolation:** Are memory stores shared between agent sessions, users, or agent instances? Poisoned content written by one session can be retrieved by another if stores are not properly isolated.
+- **Memory deletion and expiry:** Can the agent (or an attacker with tool access) write persistent entries to memory that outlast a single session? Are there TTLs and cleanup policies?
+- **Retrieval logging:** Are memory reads logged the same way tool calls are logged? Without retrieval logs, a context amnesia attack is forensically invisible — there is no record of what poisoned content the agent acted on.
+
+**Detection methods using allowed tools:**
+
+```
+# Find memory store interactions
+Grep: "vector_store|vectorstore|memory_store|add_texts|add_documents|upsert|insert" in **/*.{py,ts,js}
+Grep: "retrieve|similarity_search|query|recall|get_memory|load_memory" in **/*.{py,ts,js}
+Grep: "ConversationBufferMemory|ConversationSummaryMemory|VectorStoreRetrieverMemory" in **/*.{py,ts,js}
+
+# Find summarization pipelines that inject back into context
+Grep: "summarize|summarization|compress|condense|summary_memory" in **/*agent*.{py,ts,js}
+Grep: "inject_context|add_context|prepend_context|system_message.*memory" in **/*.{py,ts,js}
+
+# Check for source tagging on memory writes
+Grep: "source|provenance|origin|trust_level|metadata.*source" in **/*memory*.{py,ts,js}
+
+# Check for shared vs. per-session stores
+Grep: "user_id|session_id|namespace|collection|tenant" in **/*memory*.{py,ts,js,yaml,yml}
+Grep: "shared.*store|global.*memory|common.*collection" in **/*.{py,ts,js,yaml,yml}
+
+# Check for TTL and cleanup policies
+Grep: "ttl|expires|expire|evict|purge|cleanup|retention" in **/*memory*.{py,ts,js,yaml,yml}
+```
+
+**Memory boundary security checklist:**
+
+| Control | Secure State | Insecure State |
+|---|---|---|
+| Write provenance tagging | Memory entries tagged by source (agent reasoning / tool output / human input) | All entries stored without provenance — source is lost on retrieval |
+| Read trust level | Retrieved content treated as external data, not elevated to instruction authority | Retrieved content injected directly into system context with full trust |
+| Summarization validation | Content is validated before summarization pipelines inject it back as context | Raw tool output auto-summarized and re-injected as trusted agent context |
+| Store isolation | Per-user, per-session namespacing — no cross-session or cross-user retrieval | Shared global store — any agent session can retrieve any other session's state |
+| Retrieval logging | Memory reads logged with query, returned content hash, and session ID | Memory reads not logged — no forensic reconstruction possible |
+| TTL and expiry | Memory entries have TTLs; cleanup policies enforced | Persistent entries with no expiry — attacker-written content lives indefinitely |
+| Deletion controls | Only the session or authorized operator can delete memory entries | Agent or tool output can overwrite or delete arbitrary memory entries |
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Tool output (untrusted external data) written to memory store without provenance tag, retrieved and treated as trusted agent reasoning | Critical |
+| Summarization pipeline injects tool output back into system context with instruction authority | Critical |
+| Memory store shared across user sessions or agent instances without namespace isolation | High |
+| Memory reads not logged — context amnesia attacks are forensically invisible | High |
+| No TTL or expiry on memory entries — attacker-written content persists across sessions | High |
+| Agent cannot distinguish between content it reasoned and content it retrieved from external sources | High |
+| No validation of retrieved memory content before it informs agent decisions | Medium |
+
+**OWASP Agentic AI mapping:** AG03 (Agent Memory Poisoning). **NIST AI RMF mapping:** MAP 2.3 (AI system risks and trustworthiness), MANAGE 2.2 (mechanisms to sustain the value of AI systems).
+
+---
+
+### Defense Limitations
+
+> **Important caveat for all defensive recommendations in this skill:** Static defenses (input sanitization, output filtering, instruction hierarchy) reduce attack success for non-adaptive attackers but fail against adaptive adversaries who optimize attacks specifically against those defenses. PISmith (ArXiv 2603.13026) demonstrates that all current SOTA defenses against prompt injection and agentic attacks remain bypassable via adaptive reinforcement learning. Assessors should note: defensive recommendations in this skill cannot provide absolute guarantees against determined adaptive adversaries. Continuous red-team validation against adaptive attack scenarios is required as an ongoing operational control alongside the architectural controls assessed here.
+
+---
+
+### Agent Expression Evaluation Risk
+
+Agents that dynamically evaluate expressions from tool parameters or user input using "safe" eval libraries inherit full code injection risk. CVE-2026-32640 (CVSS 8.7, CWE-94/CWE-915) demonstrates that SimpleEval < 1.0.5 allows module object leakage enabling arbitrary code execution. This applies broadly to agents using any expression evaluator (SimpleEval, RestrictedPython, asteval, or similar) for dynamic tool parameter handling.
+
+**Detection methods using allowed tools:**
+
+```
+# Find expression evaluation in agent code
+Grep: "simpleeval|SimpleEval|simple_eval|RestrictedPython|asteval|safe_eval|eval(" in **/*.{py,ts,js}
+Grep: "compile|exec|eval|ast.literal_eval" in **/*agent*.{py,ts,js}
+Grep: "compile|exec|eval|ast.literal_eval" in **/*tool*.{py,ts,js}
+```
+
+**What constitutes a finding:**
+
+| Condition | Severity |
+|---|---|
+| Agent uses eval-style library (SimpleEval, RestrictedPython, etc.) for dynamic parameter handling | High |
+| Agent passes untrusted input (user or tool output) to any expression evaluator | Critical |
+| SimpleEval version < 1.0.5 in dependency tree (CVE-2026-32640) | Critical |
 
 ---
 
@@ -538,100 +652,19 @@ Glob: **/security_architecture*
 
 ## Output Format
 
-```markdown
-# AI Agent Security Architecture Assessment
-
-## Executive Summary
-- System under review: [name]
-- Assessment date: [date]
-- Agent framework: [framework name and version]
-- Number of agents: [count]
-- Overall architecture risk: [Critical / High / Medium / Low]
-- Total findings: [count by severity]
-- Key recommendation: [one sentence]
-
-## Agent Inventory
-
-| Agent | Purpose | Tools | Credentials | HITL Gates | Trust Level |
-|---|---|---|---|---|---|
-| [name] | [purpose] | [tool list] | [credential type] | [Yes/No, which actions] | [trust level] |
-
-## Architecture Diagram Annotations
-[Notes on trust boundaries, data flows, and security control placement annotating the existing architecture diagram, or a text-based representation if no diagram exists]
-
-## Findings
-
-### Finding [N]: [Title]
-- **Review Area:** [Permission Model | Least Privilege | HITL Gates | Blast Radius | Audit Trail | Rollback | Multi-Agent Trust]
-- **Severity:** [Critical | High | Medium | Low | Informational]
-- **OWASP Agentic AI Category:** [AG01-AG10 or N/A]
-- **NIST AI RMF Function:** [GOVERN | MAP | MEASURE | MANAGE] [subcategory]
-- **Location:** [file path, configuration, or architectural component]
-- **Description:** [What the architectural gap is and why it matters]
-- **Evidence:** [Code pattern, configuration, or design observation]
-- **Blast Radius:** [What could go wrong if this gap is exploited]
-- **Recommendation:** [Specific architectural remediation]
-- **Priority:** [P0 / P1 / P2 / P3]
-
-## Architecture Security Posture Summary
-
-| Review Area | Rating | Key Finding | Priority |
-|---|---|---|---|
-| Permission Model | [rating] | [one-line summary] | [priority] |
-| Least-Privilege Design | [rating] | [one-line summary] | [priority] |
-| HITL Gate Placement | [rating] | [one-line summary] | [priority] |
-| Blast Radius Containment | [rating] | [one-line summary] | [priority] |
-| Audit Trail Completeness | [rating] | [one-line summary] | [priority] |
-| Rollback Capability | [rating] | [one-line summary] | [priority] |
-| Multi-Agent Trust Boundaries | [rating] | [one-line summary] | [priority] |
-
-## Recommendations
-[Prioritized list of architectural improvements]
-
-## Framework Compliance Mapping
-| Finding | OWASP Agentic AI | NIST AI RMF |
-|---|---|---|
-| [finding] | [category] | [subcategory] |
-```
+See [reference.md](reference.md) for the full output format template.
 
 ---
 
 ## Framework Reference
 
-| Framework | Identifier | Description |
-|---|---|---|
-| OWASP Agentic AI Threats | AG01 | Excessive Agency and Permissions -- agents provisioned with more tools or credentials than required |
-| OWASP Agentic AI Threats | AG02 | Tool Misuse and Abuse -- legitimate tools used in unintended or harmful ways |
-| OWASP Agentic AI Threats | AG03 | Privilege Escalation -- agent obtains elevated permissions through manipulation |
-| OWASP Agentic AI Threats | AG05 | Trust Boundary Violations -- implicit trust between agents exploited for lateral movement |
-| OWASP Agentic AI Threats | AG06 | Data Exfiltration via Tool Calls -- legitimate tool access used to transmit data to attacker |
-| OWASP Agentic AI Threats | AG08 | Human-in-the-Loop Bypass -- approval gates circumvented through workflow exploitation |
-| NIST AI RMF 1.0 | GOVERN 1.2 | Roles, responsibilities, and authorities for AI risk management |
-| NIST AI RMF 1.0 | GOVERN 1.4 | Risk management processes established and integrated |
-| NIST AI RMF 1.0 | MAP 3.5 | Impact assessment for AI system capabilities and limitations |
-| NIST AI RMF 1.0 | MEASURE 2.5 | Failure mode analysis for AI systems |
-| NIST AI RMF 1.0 | MEASURE 2.6 | Robustness testing including adversarial conditions |
-| NIST AI RMF 1.0 | MANAGE 2.2 | Risk response mechanisms including containment |
-| NIST AI RMF 1.0 | MANAGE 2.4 | Mechanisms for tracking and responding to AI risks |
-| NIST AI RMF 1.0 | MANAGE 4.1 | Incident tracking, response, and recovery |
-
-**OWASP Agentic AI Threats:** These threat categories are maintained by the OWASP GenAI Security Project working group. The AG01-AG10 numbering and scope used here reflect the documented threat areas. Verify current numbering and content against the latest published version at [genai.owasp.org](https://genai.owasp.org).
-
-**NIST AI RMF 1.0:** Published January 2023. Organized around four functions: GOVERN (policies, culture), MAP (context, risk identification), MEASURE (risk analysis), MANAGE (risk response, monitoring). Reference: [nist.gov/aiframework](https://www.nist.gov/aiframework)
+See [reference.md](reference.md) for the complete framework reference table (OWASP Agentic AI AG01-AG08, NIST AI RMF 1.0 subcategories).
 
 ---
 
 ## Common Pitfalls
 
-1. **Designing permissions around the happy path only.** Teams grant tools based on what the agent needs to accomplish its task, but do not consider what the agent could do if compromised. Permission design must account for the adversarial case: assume the agent is fully controlled by an attacker and assess the blast radius of its current permissions. If that blast radius is unacceptable, reduce permissions until it is.
-
-2. **Placing HITL gates where they are convenient, not where they are effective.** Approval gates are frequently placed at the UI layer ("confirm before running this tool") rather than at the infrastructure layer. A UI-level gate can be bypassed if the agent framework has a code path that invokes the tool directly. Effective HITL gates are implemented in the tool execution layer or as a separate approval service that the tool must call before executing, independent of the agent's request path.
-
-3. **Trusting agents because they are "internal."** In multi-agent architectures, teams often skip inter-agent authentication because "both agents are ours." This ignores the primary threat: one agent being compromised via prompt injection and then pivoting to other agents. Inter-agent trust must be authenticated and authorized even within a single organization's infrastructure. A compromised research agent should not be able to instruct an execution agent to deploy code.
-
-4. **Building audit trails that log actions but not context.** An audit log that records "Agent-A called write_file at 14:32:01" is useful for timeline reconstruction but insufficient for root cause analysis. Without logging what the agent was told (the prompt or task), what it reasoned (the chain of thought), and what it received from other agents or tools (the inputs), investigators cannot determine whether the action was legitimate, hallucinated, or injected. Log the full decision context for every consequential action.
-
-5. **Assuming rollback is someone else's problem.** Agent developers frequently rely on downstream systems (databases, deployment platforms, email providers) to handle rollback without verifying that rollback mechanisms actually exist and work. A database transaction can be rolled back, but only if the agent's actions are wrapped in a transaction. An email cannot be recalled. A deployed binary cannot be un-deployed if the deployment pipeline has no rollback. For every tool an agent can invoke, the architecture must document the rollback mechanism and test it.
+See [reference.md](reference.md) for common pitfalls including: permissions designed for happy path only, HITL gates at UI rather than infrastructure layer, implicit inter-agent trust, audit trails without context, and untested rollback assumptions.
 
 ---
 
@@ -647,3 +680,5 @@ Glob: **/security_architecture*
 8. LangChain Arbitrary Code Execution -- CVE-2023-29374
 9. OWASP Application Security Verification Standard (ASVS), V14: Configuration -- https://owasp.org/www-project-application-security-verification-standard/
 10. Leike, J. et al. "Scalable Agent Alignment via Reward Modeling: a Research Direction" (2018) -- arXiv:1811.07871 -- foundational work on agent alignment and oversight mechanisms
+11. PISmith: Adaptive RL-Based Prompt Injection Attacks Against SOTA Defenses (2026) -- arXiv:2603.13026
+12. CVE-2026-32640 -- SimpleEval < 1.0.5 code injection via module object leakage (CVSS 8.7, CWE-94/CWE-915)
