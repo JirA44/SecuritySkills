@@ -2,17 +2,17 @@
 # See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
 # Default owners for all files
-* @unitoneai/security-skills-maintainers
+* @kamalsrini
 
 # AI security skills require review from a maintainer with AI security background
 # per SECURITY.md Section 4: "Any skill in the ai-security/ directory requires
 # review from a maintainer with AI security background"
-skills/ai-security/ @unitoneai/ai-security-reviewers
+skills/ai-security/ @kamalsrini
 
 # CI/CD workflows require maintainer review (supply chain risk)
-.github/workflows/ @unitoneai/security-skills-maintainers
+.github/workflows/ @kamalsrini
 
 # Index and contributing guidelines require maintainer review
-index.yaml @unitoneai/security-skills-maintainers
-CONTRIBUTING.md @unitoneai/security-skills-maintainers
-SECURITY.md @unitoneai/security-skills-maintainers
+index.yaml @kamalsrini
+CONTRIBUTING.md @kamalsrini
+SECURITY.md @kamalsrini
