@@ -3,7 +3,8 @@
 > Repo: github.com/UnitOneAI/SecuritySkills
 > Date: <!-- INSERT DATE -->
 > Auditor Agent: <!-- INSERT MODEL + SESSION ID -->
-> Bundle Scope: <!-- e.g. AppSec | DevSecOps | Infra | Red Team | All -->
+> Domain Scope: <!-- one or more of: ai-security | appsec | cloud | compliance | devsecops | identity | incident-response | network | secops | vuln-management | all -->
+> Role Scope: <!-- optional — role bundles in scope: appsec-engineer | architect | cloud-security-engineer | devsecops | ml-engineer | privacy-engineer | security-engineer | soc-analyst | vciso | all -->
 
 ---
 
@@ -16,7 +17,7 @@
 | PARTIAL (minor gaps) | 0 |
 | FAIL (structural rewrite needed) | 0 |
 | Rules Violated (total across all skills) | 0 |
-| Bundles Affected | 0 / 5 |
+| Domains Affected | 0 / 10 |
 | Estimated Enhancement Sessions | 0 |
 
 ---
@@ -25,9 +26,9 @@
 
 > Fill after initial scan. X = violated, ✓ = pass, ~ = partial
 
-| Skill Name | Bundle | R1 System Layer | R2 Verification | R3 Elegance | R4 File Structure | R5 Gotchas | R6 No Over-Constrain | R7 Subagent Fit | Overall |
+| Skill Name | Domain | R1 System Layer | R2 Verification | R3 Elegance | R4 File Structure | R5 Gotchas | R6 No Over-Constrain | R7 Subagent Fit | Overall |
 |---|---|---|---|---|---|---|---|---|---|
-| <!-- skill-name --> | <!-- bundle --> | | | | | | | | |
+| <!-- skill-name --> | <!-- domain --> | | | | | | | | |
 | | | | | | | | | | |
 
 ---
@@ -38,24 +39,25 @@
 
 ---
 
-### SKILL: `<!-- skill-file-name.md -->`
+### SKILL: `<!-- skills/<domain>/<skill-name>/SKILL.md -->`
 
-**Bundle:** `<!-- AppSec | DevSecOps | Infra | Red Team | Security Engineer -->`
-**Vulnerability Class:** `<!-- e.g. Prompt Injection | Secret Leakage | Tool Misuse | SSRF | Blast Radius | Context Poisoning -->`
-**File Path:** `skills/<!-- bundle -->/<skill-file-name>.md`
+**Domain:** `<!-- ai-security | appsec | cloud | compliance | devsecops | identity | incident-response | network | secops | vuln-management -->`
+**Role bundles:** `<!-- from frontmatter role: e.g. security-engineer, architect -->`
+**Phase(s):** `<!-- from frontmatter phase: assess | build | deploy | design | operate | recover | respond | review -->`
+**Path:** `skills/<!-- domain -->/<!-- skill-name -->/SKILL.md`
 **Overall Status:** `<!-- PASS | PARTIAL | FAIL -->`
 
 ---
 
-#### Rule 1 — Skills Are System Layer, Not Markdown Files
+#### Rule 1 — Skills Are a System Layer, Not Markdown Files
 **Status:** `<!-- PASS | PARTIAL | FAIL -->`
 
 | Component | Present? | Notes |
 |---|---|---|
 | Executable verification steps | <!-- YES / NO / PARTIAL --> | |
-| Automation scripts / workflow triggers | <!-- YES / NO / PARTIAL --> | |
-| Data patterns (regex, signatures, AST) | <!-- YES / NO / PARTIAL --> | |
-| Scaffolding templates | <!-- YES / NO / PARTIAL --> | |
+| Automation triggers / clear auto-invoke description | <!-- YES / NO / PARTIAL --> | |
+| Data patterns (regex, signatures, control IDs) | <!-- YES / NO / PARTIAL --> | |
+| Scaffolding / output templates | <!-- YES / NO / PARTIAL --> | |
 
 **Finding:**
 ```
@@ -88,8 +90,8 @@
 | Elegance Check | Finding |
 |---|---|
 | Redundant sub-bullets that restate parent | <!-- YES (remove) / NO (clean) --> |
-| Overlap with other skills in same bundle | <!-- YES (consolidate) / NO (clean) --> |
-| Overengineered logic for simple vuln class | <!-- YES (simplify) / NO (clean) --> |
+| Overlap with other skills in same domain | <!-- YES (consolidate) / NO (clean) --> |
+| Overengineered logic for a simple check | <!-- YES (simplify) / NO (clean) --> |
 
 **Refactor Notes:**
 ```
@@ -100,33 +102,42 @@
 
 ---
 
-#### Rule 4 — File System = Context Engine
+#### Rule 4 — File System = Context Engine (Progressive Disclosure)
 **Status:** `<!-- PASS | PARTIAL | FAIL -->`
 
-| Directory Convention | Required? | Exists? | Action |
-|---|---|---|---|
-| `/references/` — threat patterns, CVE, MITRE links | <!-- YES / NO --> | <!-- YES / NO --> | <!-- CREATE / EXTRACT / NONE --> |
-| `/scripts/` — verification scripts, fix templates | <!-- YES / NO --> | <!-- YES / NO --> | <!-- CREATE / MOVE / NONE --> |
-| `/templates/` — scaffolding agent emits on remediation | <!-- YES / NO --> | <!-- YES / NO --> | <!-- CREATE / MOVE / NONE --> |
+> A skill is a **directory** at `skills/<domain>/<skill-name>/` with `SKILL.md` as the lean
+> entrypoint. When `SKILL.md` would exceed ~500 lines, detail moves to **sibling reference
+> files** in the same directory (e.g. `threat-actor-profiles.md`, `csharp-dotnet.md`) that
+> the agent loads on demand. There are no `/references/`, `/scripts/`, or `/templates/`
+> subdirectories — the real pattern is flat directory + sibling `.md` files.
 
-**Inline knowledge to extract:**
+| Progressive-Disclosure Check | Finding | Action |
+|---|---|---|
+| `SKILL.md` lean (entrypoint stays cheap to load) | <!-- YES / NO (>~500 lines) --> | <!-- NONE / SPLIT to sibling .md --> |
+| Heavy detail (checklists, profiles, lang specifics) inline that should be a sibling file | <!-- YES / NO --> | <!-- EXTRACT to sibling .md / NONE --> |
+| Existing sibling reference files linked from `SKILL.md` | <!-- YES / NO / N/A --> | <!-- LINK / NONE --> |
+| `name:` frontmatter matches the directory name | <!-- YES / NO --> | <!-- FIX / NONE --> |
+
+**Inline knowledge to extract into a sibling reference file:**
 ```
-<!-- List any CVE refs, code patterns, or fix logic currently inline
-     that should move to /references/ or /scripts/ -->
+<!-- List any long checklists, control-ID tables, threat profiles, or language-specific
+     guidance currently inline that should move to a sibling .md and be linked -->
 ```
 
-**Action Required:** `<!-- NONE | EXTRACT to /references/ | MOVE fix logic to /scripts/ -->`
+**Action Required:** `<!-- NONE | SPLIT detail into sibling reference file(s) | RENAME to match directory -->`
 
 ---
 
 #### Rule 5 — Self-Improvement Loop (Gotchas)
 **Status:** `<!-- PASS | PARTIAL | FAIL -->`
 
+> Gotchas live as a **section inside `SKILL.md`**, not a separate global file.
+
 | Gotchas Component | Present? | Count |
 |---|---|---|
-| Known false positive patterns | <!-- YES / NO --> | 0 |
-| Precision traps (fix breaks agent behavior) | <!-- YES / NO --> | 0 |
-| Real exploit pattern lessons (agentic context) | <!-- YES / NO --> | 0 |
+| Known false-positive patterns | <!-- YES / NO --> | 0 |
+| Precision traps (fix breaks valid agent behavior) | <!-- YES / NO --> | 0 |
+| Real exploit / lesson notes (agentic context) | <!-- YES / NO --> | 0 |
 
 **Existing Gotchas:**
 ```
@@ -150,7 +161,7 @@
 | Over-Constraint Check | Finding |
 |---|---|
 | Rigid prescriptive steps that remove agent judgment | <!-- YES (rewrite) / NO (clean) --> |
-| Missing rationale ("why" behind security control) | <!-- YES (add) / NO (present) --> |
+| Missing rationale ("why" behind the control) | <!-- YES (add) / NO (present) --> |
 | Instructions that cause failure on valid edge cases | <!-- YES (fix) / NO (clean) --> |
 
 **Structure Check:** Does the skill follow **Intent → Constraints → Flexibility**?
@@ -166,14 +177,14 @@
 | Subagent Check | Finding |
 |---|---|
 | Single-responsibility (one focused subagent can execute) | <!-- YES / NO --> |
-| No cross-bundle context dependency | <!-- YES / NO --> |
+| No cross-domain context dependency | <!-- YES / NO --> |
 | Parallelizable (marked explicitly?) | <!-- YES / NO / NOT APPLICABLE --> |
 | Mixed concerns present | <!-- YES (split) / NO (clean) --> |
 
 **Mixed Concerns Identified:**
 ```
 <!-- List any responsibilities in this skill that belong in a different
-     skill or bundle. Propose split if needed. -->
+     skill or domain. Propose split if needed. -->
 ```
 
 **Action Required:** `<!-- NONE | SPLIT into atomic skills (list proposed names) | MARK as parallelizable -->`
@@ -182,7 +193,7 @@
 
 #### Enhancement Plan
 
-**Priority:** `<!-- P0 — ships this session | P1 — AppSec/DevSecOps first | P2 — Infra/Red Team -->`
+**Priority:** `<!-- P0 — ships this session | P1 — high-traffic domain (appsec/ai-security) first | P2 — remaining domains -->`
 
 **Estimated Complexity:** `<!-- Low (gotchas only) | Medium (add verification + restructure) | High (full rewrite) -->`
 
@@ -193,7 +204,7 @@ fix(skill): <skill-name> — <primary rule violated>
 
 **Precision Regression Check:**
 - [ ] Agent behavior preserved after enhancement
-- [ ] Vulnerability class still caught after refactor
+- [ ] Target issue class still caught after refactor
 - [ ] No new false positives introduced
 - [ ] Verified against synthetic agent session
 
@@ -201,59 +212,17 @@ fix(skill): <skill-name> — <primary rule violated>
 
 ---
 
-## Bundle-Level Findings
+## Domain-Level Findings
 
-### AppSec Bundle
-**Skills in bundle:** <!-- list names -->
-**Overall bundle health:** `<!-- PASS | NEEDS WORK -->`
+> One block per audited domain. Real domains: ai-security (6), appsec (5), cloud (5),
+> compliance (5), devsecops (4), identity (5), incident-response (4), network (3),
+> secops (4), vuln-management (4).
+
+### <!-- domain --> Domain
+**Skills in domain:** <!-- list names -->
+**Overall domain health:** `<!-- PASS | NEEDS WORK -->`
 **Cross-skill overlap identified:** <!-- YES / NO — describe -->
-**Bundle gaps (vulnerability classes not covered):** <!-- list -->
-
----
-
-### DevSecOps Bundle
-**Skills in bundle:** <!-- list names -->
-**Overall bundle health:** `<!-- PASS | NEEDS WORK -->`
-**Cross-skill overlap identified:** <!-- YES / NO — describe -->
-**Bundle gaps:** <!-- list -->
-
----
-
-### Infrastructure Bundle
-**Skills in bundle:** <!-- list names -->
-**Overall bundle health:** `<!-- PASS | NEEDS WORK -->`
-**Cross-skill overlap identified:** <!-- YES / NO — describe -->
-**Bundle gaps:** <!-- list -->
-
----
-
-### Security Engineer Bundle
-**Skills in bundle:** <!-- list names -->
-**Overall bundle health:** `<!-- PASS | NEEDS WORK -->`
-**Cross-skill overlap identified:** <!-- YES / NO — describe -->
-**Bundle gaps:** <!-- list -->
-
----
-
-## Gotchas Log — Enhancement Pass
-
-> Append to `/gotchas.md` after this audit completes
-
-```markdown
-## Skill Enhancement Pass — <!-- DATE -->
-
-### What Was Found
--
-
-### What Was Changed
--
-
-### Precision Regression Notes
--
-
-### Open Questions for Next Pass
--
-```
+**Domain gaps (coverage not yet addressed):** <!-- list -->
 
 ---
 
@@ -263,17 +232,16 @@ fix(skill): <skill-name> — <primary rule violated>
 - [ ] Heatmap table completed
 - [ ] All FAIL skills have Before/After documented
 - [ ] All PARTIAL skills have Action Required filled
-- [ ] `/references/` directories created where missing
-- [ ] `/scripts/` fix logic extracted where needed
-- [ ] `/templates/` scaffolding added where needed
+- [ ] Lean `SKILL.md`; heavy detail split into sibling reference files where needed
+- [ ] Each skill's `name:` frontmatter matches its directory name
+- [ ] Frontmatter complete and valid on every skill (tags, role, phase, frameworks, difficulty, etc.)
 - [ ] Gotchas section present on every skill (min 2 entries)
 - [ ] All enhanced skills verified against synthetic agent session
 - [ ] Precision regression check passed on all modified skills
-- [ ] Bundle-level gap analysis complete
-- [ ] Gotchas log entry written to `/gotchas.md`
+- [ ] Domain-level gap analysis complete
 - [ ] All commits follow `fix(skill): <name> — <rule>` format
 
 ---
 
-*SecuritySkills Audit Template v1.0 — UnitOne.ai*
+*SecuritySkills Audit Template v1.1 — UnitOne.ai*
 *Systems > Prompts · Verification > Generation · Iteration > Perfection*
